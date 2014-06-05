@@ -5,13 +5,12 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"sync"
 )
 
 const (
-	Filename     = "persistedqueue"
-	FileExtQueue = "wal"
-	FileExtTmp   = "tmp"
+	FilenameDefault = "default.goinmq"
+	FileExtQueue    = "wal"
+	FileExtTmp      = "tmp"
 )
 
 type Message struct {
@@ -19,7 +18,6 @@ type Message struct {
 }
 
 type Queue struct {
-	sync.Mutex
 	Log              Logger
 	queueFilename    string
 	tmpQueueFilename string
@@ -39,30 +37,68 @@ func (ErrorLog) Info(string)    {}
 func (ErrorLog) Warning(string) {}
 func (ErrorLog) Error(string)   {}
 
-func NewQueue(errLog Logger) *Queue {
+type readOp struct {
+	resp chan *Message
+}
+
+type writeOp struct {
+	val  *Message
+	resp chan bool
+}
+
+var (
+	reads  chan *readOp
+	writes chan *writeOp
+)
+
+func NewQueue(queueFilename string, errLog Logger) *Queue {
 	if errLog == nil {
 		errLog = ErrorLog{}
 	}
+	if queueFilename == "" {
+		queueFilename = FilenameDefault
+	}
+
 	errLog.Info("NewQueue(Logger)")
 
-	return &Queue{
-		queueFilename:    Filename + "." + FileExtQueue,
-		tmpQueueFilename: Filename + "." + FileExtTmp,
+	reads = make(chan *readOp)
+	writes = make(chan *writeOp)
+
+	q := &Queue{
+		queueFilename:    queueFilename + "." + FileExtQueue,
+		tmpQueueFilename: queueFilename + "." + FileExtTmp,
 		Log:              errLog,
 	}
+	q.startFsGate(reads, writes)
+	return q
 }
 
 func NewMessage() *Message {
 	return &Message{}
 }
 
-func (q Queue) ReadQueue() string {
-	text, err := ioutil.ReadFile(q.queueFilename)
-	if err != nil {
-		q.Log.Error(err.Error())
-		panic(err)
-	}
-	return string(text)
+func (q Queue) startFsGate(reads chan *readOp, writes chan *writeOp) {
+	go func() {
+		for {
+			select {
+			case read := <-reads:
+				topMsg, ok := q.peek()
+				if ok {
+					q.Log.Trace("lib read " + topMsg.Message)
+					read.resp <- topMsg
+					q.removeHead()
+				} else {
+					read.resp <- nil
+				}
+			case write := <-writes:
+				m := NewMessage()
+				m.Message = "write " + write.val.Message
+				q.Log.Trace("lib write " + m.Message)
+				q.enqueue(m)
+				write.resp <- true
+			}
+		}
+	}()
 }
 
 func (q Queue) GetSendChannel() chan *Message {
@@ -73,7 +109,11 @@ func (q Queue) GetSendChannel() chan *Message {
 	go func() {
 		for {
 			newMsg := <-sendChan
-			q.enqueue(newMsg)
+			write := &writeOp{
+				val:  newMsg,
+				resp: make(chan bool)}
+			writes <- write
+			<-write.resp
 		}
 	}()
 	return sendChan
@@ -86,10 +126,11 @@ func (q Queue) GetReceiveChannel() chan *Message {
 
 	go func() {
 		for {
-			topMsg, ok := q.dequeue()
-			if ok == false {
-				continue
-			}
+			q.Log.Trace("Checking for messages to dequeue")
+			read := &readOp{
+				resp: make(chan *Message)}
+			reads <- read
+			topMsg := <-read.resp
 			recvChan <- topMsg
 		}
 	}()
@@ -102,30 +143,31 @@ func (q Queue) enqueue(newMsg *Message) {
 	q.persist(newMsg)
 }
 
-func (q Queue) dequeue() (*Message, bool) {
-	q.Log.Trace("dequeue()")
-
-	q.Lock()
+func (q Queue) queueExists() bool {
+	q.Log.Trace("queueExists()")
 
 	fileInfo, err := os.Stat(q.queueFilename)
+	q.Log.Trace("queueExists() - called stat")
 	if err != nil {
-		return NewMessage(), false
+		q.Log.Trace("queueExists() - false, stat failed")
+		return false
 	}
+	q.Log.Trace("queueExists() - stat checked")
 	walSize := fileInfo.Size()
+	q.Log.Trace("queueExists() - size retrieved")
 	if walSize == 0 {
-		return NewMessage(), false
+		q.Log.Trace("queueExists() - false, size 0")
+		return false
 	}
-	msg := q.popQueue()
-	q.Unlock()
 
-	return msg, true
+	q.Log.Trace("queueExists() - true")
+	return true
 }
 
 func (q Queue) persist(msg *Message) {
 	q.Log.Trace("persist(Message)")
 
-	q.Lock()
-
+	q.Log.Trace("persist(Message) is creating queue file")
 	file, err := os.OpenFile(q.queueFilename, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
 	if err != nil {
 		q.Log.Error(err.Error())
@@ -137,27 +179,25 @@ func (q Queue) persist(msg *Message) {
 		q.Log.Error(err.Error())
 		panic(err)
 	}
-	q.Unlock()
 }
 
-func (q Queue) popQueue() *Message {
-	q.Log.Trace("popQueue()")
+func (q Queue) peek() (*Message, bool) {
+	q.Log.Trace("peek()")
 
-	msgData := q.readNext()
-	q.deleteTopMessage(int64(len(msgData.Message + "\n")))
-
-	return msgData
-}
-
-func (q Queue) readNext() *Message {
-	q.Log.Trace("readNext()")
+	if !q.queueExists() {
+		q.Log.Trace("no queue")
+		return nil, false
+	}
+	q.Log.Trace("found queue")
 
 	file, err := os.Open(q.queueFilename)
 	if err != nil {
 		q.Log.Error(err.Error())
-		panic(err)
+		return nil, false
 	}
 	defer file.Close()
+
+	q.Log.Trace("reading head")
 
 	reader := bufio.NewReader(file)
 	scanner := bufio.NewScanner(reader)
@@ -165,19 +205,27 @@ func (q Queue) readNext() *Message {
 	msgData := scanner.Text()
 	if err := scanner.Err(); err != nil {
 		q.Log.Error(err.Error())
-		panic(err)
+		return nil, false
 	}
+	q.Log.Trace("got head")
 
 	msg := NewMessage()
 	msg.Message = msgData
 
-	return msg
+	return msg, true
 }
 
-func (q Queue) deleteTopMessage(offset int64) {
+func (q Queue) removeHead() {
 	q.Log.Trace("deleteTopMessage(offset)")
 
+	// TODO: get rid of this read?
+	headMessage, ok := q.peek()
+	if !ok {
+		return
+	}
+	offset := int64(len(headMessage.Message + "\n"))
 	q.createLogTail(offset)
+
 	q.swapTmp()
 }
 
@@ -239,13 +287,25 @@ func (q Queue) swapTmp() {
 	q.Log.Trace("swapTmp()")
 
 	if err := os.Remove(q.queueFilename); err != nil {
+		q.Log.Trace("swapTmp() remove queue failed")
 		q.Log.Error(err.Error())
 		panic(err)
 	}
+	q.Log.Trace("swapTmp() remove queue done")
 
+	q.Log.Trace("swapTmp() renaming")
 	err := os.Rename(q.tmpQueueFilename, q.queueFilename)
 	if err != nil {
 		q.Log.Error(err.Error())
 		panic(err)
 	}
+}
+
+func (q Queue) ReadQueue() string {
+	text, err := ioutil.ReadFile(q.queueFilename)
+	if err != nil {
+		q.Log.Error(err.Error())
+		panic(err)
+	}
+	return string(text)
 }
