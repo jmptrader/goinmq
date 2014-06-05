@@ -7,7 +7,7 @@ An in-process persistent message queue package for Golang.
 Example usage:
 ```
 func main() {
-	q := goinmq.NewQueue(errLog) // Can pass nil if no logging desired.
+	q := goinmq.NewQueue("", errLog) // Empty queue name defaults, nil logger if no logging desired.
 	recvChan := q.GetReceiveChannel()
 	sendChan := q.GetSendChannel()
 	go recvMessages(recvChan)
