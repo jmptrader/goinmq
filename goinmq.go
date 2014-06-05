@@ -2,9 +2,11 @@ package goinmq
 
 import (
 	"bufio"
+	"encoding/json"
 	"io"
 	"io/ioutil"
 	"os"
+	"time"
 )
 
 const (
@@ -14,7 +16,11 @@ const (
 )
 
 type Message struct {
-	Message string
+	Id         string `json:"id"`
+	Priority   int    `json:"priority"`
+	CreatedAt  string `json:"created-at"`
+	DeadlineAt string `json:"deadline-at"`
+	Message    string `json:"message"`
 }
 
 type Queue struct {
@@ -82,7 +88,7 @@ func (q Queue) startFsGate(reads chan *readOp, writes chan *writeOp) {
 		for {
 			select {
 			case read := <-reads:
-				topMsg, ok := q.peek()
+				topMsg, _, ok := q.peek()
 				if ok {
 					q.Log.Trace("lib read " + topMsg.Message)
 					read.resp <- topMsg
@@ -91,8 +97,7 @@ func (q Queue) startFsGate(reads chan *readOp, writes chan *writeOp) {
 					read.resp <- nil
 				}
 			case write := <-writes:
-				m := NewMessage()
-				m.Message = "write " + write.val.Message
+				m := write.val
 				q.Log.Trace("lib write " + m.Message)
 				q.enqueue(m)
 				write.resp <- true
@@ -109,6 +114,7 @@ func (q Queue) GetSendChannel() chan *Message {
 	go func() {
 		for {
 			newMsg := <-sendChan
+			newMsg.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 			write := &writeOp{
 				val:  newMsg,
 				resp: make(chan bool)}
@@ -131,7 +137,9 @@ func (q Queue) GetReceiveChannel() chan *Message {
 				resp: make(chan *Message)}
 			reads <- read
 			topMsg := <-read.resp
-			recvChan <- topMsg
+			if topMsg != nil {
+				recvChan <- topMsg
+			}
 		}
 	}()
 	return recvChan
@@ -175,25 +183,27 @@ func (q Queue) persist(msg *Message) {
 	}
 	defer file.Close()
 
-	if _, err := file.WriteString(msg.Message + "\n"); err != nil {
+	js, _ := json.Marshal(msg)
+
+	if _, err := file.WriteString(string(js) + "\n"); err != nil {
 		q.Log.Error(err.Error())
 		panic(err)
 	}
 }
 
-func (q Queue) peek() (*Message, bool) {
+func (q Queue) peek() (*Message, int64, bool) {
 	q.Log.Trace("peek()")
 
 	if !q.queueExists() {
 		q.Log.Trace("no queue")
-		return nil, false
+		return nil, 0, false
 	}
 	q.Log.Trace("found queue")
 
 	file, err := os.Open(q.queueFilename)
 	if err != nil {
 		q.Log.Error(err.Error())
-		return nil, false
+		return nil, 0, false
 	}
 	defer file.Close()
 
@@ -205,26 +215,25 @@ func (q Queue) peek() (*Message, bool) {
 	msgData := scanner.Text()
 	if err := scanner.Err(); err != nil {
 		q.Log.Error(err.Error())
-		return nil, false
+		return nil, 0, false
 	}
 	q.Log.Trace("got head")
 
 	msg := NewMessage()
-	msg.Message = msgData
+	msgBytes := []byte(msgData)
+	json.Unmarshal(msgBytes, &msg)
 
-	return msg, true
+	return msg, int64(len(msgData)), true
 }
 
 func (q Queue) removeHead() {
 	q.Log.Trace("deleteTopMessage(offset)")
 
-	// TODO: get rid of this read?
-	headMessage, ok := q.peek()
+	_, size, ok := q.peek()
 	if !ok {
 		return
 	}
-	offset := int64(len(headMessage.Message + "\n"))
-	q.createLogTail(offset)
+	q.createLogTail(size + 1) // 1 is "\n"
 
 	q.swapTmp()
 }
