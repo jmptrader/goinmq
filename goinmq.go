@@ -210,10 +210,8 @@ func (q Queue) peek() (*Message, int64, bool) {
 	q.Log.Trace("reading head")
 
 	reader := bufio.NewReader(file)
-	scanner := bufio.NewScanner(reader)
-	scanner.Scan()
-	msgData := scanner.Text()
-	if err := scanner.Err(); err != nil {
+	msgData, err := reader.ReadString('\n')
+	if err != nil {
 		q.Log.Error(err.Error())
 		return nil, 0, false
 	}
