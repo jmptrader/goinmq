@@ -23,6 +23,14 @@ func NewDirectoryStore(errLog Logger) *DirectoryStore {
 	store.Log = errLog
 	store.QueueName = QueueNameDefault
 
+	if !store.queueExists() {
+		err := os.Mkdir(store.QueueName, 0600)
+		if err != nil {
+			store.Log.Error(err.Error())
+			panic(err)
+		}
+	}
+
 	return store
 }
 
@@ -32,27 +40,26 @@ func (s DirectoryStore) SetName(queueName string) {
 
 func (s DirectoryStore) queueExists() bool {
 	_, err := os.Stat(s.QueueName)
+
 	if os.IsNotExist(err) {
-		s.Log.Error("queueExists() - false, not exists")
 		return false
 	}
 	if err != nil {
-		s.Log.Error("queueExists() - false, stat failed")
 		return false
 	}
 	return true
 }
 
 func (s DirectoryStore) isQueueEmpty() bool {
-	files, err := ioutil.ReadDir(s.QueueName)
+	stat, err := os.Stat(s.QueueName)
 	if err != nil {
-		s.Log.Error(err.Error())
 		panic(err)
 	}
-	if len(files) != 0 {
-		return false
-	} else {
+
+	if stat.Size() == 0 {
 		return true
+	} else {
+		return false
 	}
 }
 
@@ -61,33 +68,21 @@ func (s DirectoryStore) Enqueue(newMsg *Message) {
 }
 
 func (s DirectoryStore) persist(msg *Message) {
-	if !s.queueExists() {
-		err := os.Mkdir(s.QueueName, 0600)
-		if err != nil {
-			s.Log.Error(err.Error())
-			panic(err)
-		}
-	}
-
 	lastFilename, fileCount := s.getLastFilename()
 	if fileCount > 0 {
 		filenum, err := strconv.Atoi(lastFilename)
 		if err != nil {
-			s.Log.Error(err.Error())
 			panic(err)
 		}
 		if filenum >= 2000000000 {
 			s.reindexFiles()
 			lastFilename, fileCount = s.getLastFilename()
 		}
-	}
-
-	if fileCount == 0 {
+	} else {
 		lastFilename = "0"
 	}
 	filenum, err := strconv.Atoi(lastFilename)
 	if err != nil {
-		s.Log.Error(err.Error())
 		panic(err)
 	}
 	filenum++
@@ -95,15 +90,12 @@ func (s DirectoryStore) persist(msg *Message) {
 	filePath := path.Join(s.QueueName, formattedFilename)
 	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0600)
 	if err != nil {
-		s.Log.Error(err.Error())
 		panic(err)
 	}
 	defer file.Close()
 
 	js, _ := json.Marshal(msg)
-
-	if _, err := file.WriteString(string(js)); err != nil {
-		s.Log.Error(err.Error())
+	if _, err := file.Write(js); err != nil {
 		panic(err)
 	}
 }
@@ -111,7 +103,6 @@ func (s DirectoryStore) persist(msg *Message) {
 func (s DirectoryStore) getLastFilename() (string, int) {
 	files, err := ioutil.ReadDir(s.QueueName)
 	if err != nil {
-		s.Log.Error(err.Error())
 		panic(err)
 	}
 	fileCount := len(files)
@@ -130,7 +121,6 @@ func (s DirectoryStore) formatFilename(filename int) string {
 func (s DirectoryStore) reindexFiles() {
 	files, err := ioutil.ReadDir(s.QueueName)
 	if err != nil {
-		s.Log.Error(err.Error())
 		panic(err)
 	}
 	os.Chdir(s.QueueName)
@@ -146,13 +136,8 @@ func (s DirectoryStore) Peek() (*Message, bool) {
 }
 
 func (s DirectoryStore) getHead() (*Message, string, bool) {
-	if !s.queueExists() {
-		return nil, "", false
-	}
-
 	files, err := ioutil.ReadDir(s.QueueName)
 	if err != nil {
-		s.Log.Error(err.Error())
 		return nil, "", false
 	}
 
@@ -162,7 +147,6 @@ func (s DirectoryStore) getHead() (*Message, string, bool) {
 
 	msgBytes, err := ioutil.ReadFile(path.Join(s.QueueName, files[0].Name()))
 	if err != nil {
-		s.Log.Error(err.Error())
 		return nil, "", false
 	}
 
