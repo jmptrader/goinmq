@@ -19,7 +19,7 @@ type Queue struct {
 
 type Storer interface {
 	SetName(string)
-	Peek() (*Message, int64, bool)
+	Peek() (*Message, bool)
 	RemoveHead()
 	Enqueue(*Message)
 }
@@ -46,6 +46,10 @@ type writeOp struct {
 	val  *Message
 	resp chan bool
 }
+
+const (
+	QueueNameDefault = "default.goinmq"
+)
 
 var (
 	reads  chan *readOp
@@ -80,7 +84,7 @@ func (q Queue) startFsGate(reads chan *readOp, writes chan *writeOp) {
 		for {
 			select {
 			case read := <-reads:
-				topMsg, _, ok := q.store.Peek()
+				topMsg, ok := q.store.Peek()
 				if ok {
 					q.Log.Trace("lib read " + topMsg.Message)
 					read.resp <- topMsg

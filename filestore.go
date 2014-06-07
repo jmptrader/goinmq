@@ -9,9 +9,8 @@ import (
 )
 
 const (
-	QueueNameDefault = "default.goinmq"
-	FileExtQueue     = "wal"
-	FileExtTmp       = "tmp"
+	FileExtQueue = "wal"
+	FileExtTmp   = "tmp"
 )
 
 type FileStore struct {
@@ -46,6 +45,10 @@ func (s FileStore) queueExists() bool {
 
 	fileInfo, err := os.Stat(s.queueFilename)
 	s.Log.Trace("queueExists() - called stat")
+	if os.IsNotExist(err) {
+		s.Log.Trace("queueExists() - false, not exists")
+		return false
+	}
 	if err != nil {
 		s.Log.Trace("queueExists() - false, stat failed")
 		return false
@@ -87,8 +90,13 @@ func (s FileStore) persist(msg *Message) {
 	}
 }
 
-func (s FileStore) Peek() (*Message, int64, bool) {
-	s.Log.Trace("peek()")
+func (s FileStore) Peek() (*Message, bool) {
+	msg, _, found := s.getHead()
+	return msg, found
+}
+
+func (s FileStore) getHead() (*Message, int64, bool) {
+	s.Log.Trace("gethead()")
 
 	if !s.queueExists() {
 		s.Log.Trace("no queue")
@@ -105,7 +113,6 @@ func (s FileStore) Peek() (*Message, int64, bool) {
 
 	s.Log.Trace("reading head")
 
-	//reader := io.Re
 	reader := bufio.NewReader(file)
 	msgData, err := reader.ReadString('\n')
 	if err != nil {
@@ -124,7 +131,7 @@ func (s FileStore) Peek() (*Message, int64, bool) {
 func (s FileStore) RemoveHead() {
 	s.Log.Trace("deleteTopMessage(offset)")
 
-	_, size, ok := s.Peek()
+	_, size, ok := s.getHead()
 	if !ok {
 		return
 	}

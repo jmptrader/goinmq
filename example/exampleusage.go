@@ -24,7 +24,8 @@ func init() {
 }
 
 func main() {
-	store := goinmq.NewFileStore(errLog)
+	//store := goinmq.NewFileStore(errLog)
+	store := goinmq.NewDirectoryStore(errLog)
 
 	q := goinmq.NewQueue("", store, errLog) // Can pass nil if no logging desired.
 	recvChan := q.GetReceiveChannel()
