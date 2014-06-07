@@ -213,7 +213,7 @@ func (s DirectoryStore) ReadQueue() string {
 	defer dumpFile.Close()
 
 	os.Chdir(s.QueueName)
-	for i, f := range files {
+	for _, f := range files {
 		msgFileBytes, err := ioutil.ReadFile(f.Name())
 		if err != nil {
 			panic(err)
