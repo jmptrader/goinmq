@@ -86,7 +86,6 @@ func (q Queue) startFsGate(reads chan *readOp, writes chan *writeOp) {
 			case read := <-reads:
 				topMsg, ok := q.store.Peek()
 				if ok {
-					q.Log.Trace("lib read " + topMsg.Message)
 					read.resp <- topMsg
 					q.store.RemoveHead()
 				} else {
@@ -94,7 +93,6 @@ func (q Queue) startFsGate(reads chan *readOp, writes chan *writeOp) {
 				}
 			case write := <-writes:
 				m := write.val
-				q.Log.Trace("lib write " + m.Message)
 				q.store.Enqueue(m)
 				write.resp <- true
 			}
