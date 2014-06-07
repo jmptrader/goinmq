@@ -31,20 +31,15 @@ func (s DirectoryStore) SetName(queueName string) {
 }
 
 func (s DirectoryStore) queueExists() bool {
-	s.Log.Trace("queueExists()")
-
 	_, err := os.Stat(s.QueueName)
-	s.Log.Trace("queueExists() - called stat")
 	if os.IsNotExist(err) {
-		s.Log.Trace("queueExists() - false, not exists")
+		s.Log.Error("queueExists() - false, not exists")
 		return false
 	}
 	if err != nil {
-		s.Log.Trace("queueExists() - false, stat failed")
+		s.Log.Error("queueExists() - false, stat failed")
 		return false
 	}
-	s.Log.Trace("queueExists() - stat checked")
-	s.Log.Trace("queueExists() - true")
 	return true
 }
 
@@ -62,14 +57,10 @@ func (s DirectoryStore) isQueueEmpty() bool {
 }
 
 func (s DirectoryStore) Enqueue(newMsg *Message) {
-	s.Log.Trace("enqueue(Message)")
-
 	s.persist(newMsg)
 }
 
 func (s DirectoryStore) persist(msg *Message) {
-	s.Log.Trace("persist(Message)")
-
 	if !s.queueExists() {
 		err := os.Mkdir(s.QueueName, 0600)
 		if err != nil {
@@ -78,7 +69,6 @@ func (s DirectoryStore) persist(msg *Message) {
 		}
 	}
 
-	s.Log.Trace("persist(Message) is creating queue file")
 	lastFilename, fileCount := s.getLastFilename()
 	if fileCount > 0 {
 		filenum, err := strconv.Atoi(lastFilename)
@@ -156,13 +146,9 @@ func (s DirectoryStore) Peek() (*Message, bool) {
 }
 
 func (s DirectoryStore) getHead() (*Message, string, bool) {
-	s.Log.Trace("gethead()")
-
 	if !s.queueExists() {
-		s.Log.Trace("no queue")
 		return nil, "", false
 	}
-	s.Log.Trace("found queue")
 
 	files, err := ioutil.ReadDir(s.QueueName)
 	if err != nil {
@@ -174,25 +160,19 @@ func (s DirectoryStore) getHead() (*Message, string, bool) {
 		return nil, "", false
 	}
 
-	s.Log.Trace("reading head")
-
 	msgBytes, err := ioutil.ReadFile(path.Join(s.QueueName, files[0].Name()))
 	if err != nil {
 		s.Log.Error(err.Error())
 		return nil, "", false
 	}
-	s.Log.Trace("got head")
 
 	msg := NewMessage()
-	//msgBytes := []byte(msgData)
 	json.Unmarshal(msgBytes, &msg)
 
 	return msg, files[0].Name(), true
 }
 
 func (s DirectoryStore) RemoveHead() {
-	s.Log.Trace("deleteTopMessage(offset)")
-
 	_, filename, ok := s.getHead()
 	if !ok {
 		return
