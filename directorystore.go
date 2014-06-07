@@ -1,23 +1,17 @@
 package goinmq
 
 import (
-	//"bufio"
 	"encoding/json"
 	"fmt"
-	//"io"
 	"io/ioutil"
 	"os"
 	"path"
 	"strconv"
 )
 
-const ()
-
 type DirectoryStore struct {
 	QueueName string
-	//queueFilename    string
-	//tmpQueueFilename string
-	Log Logger
+	Log       Logger
 }
 
 func NewDirectoryStore(errLog Logger) *DirectoryStore {
@@ -28,16 +22,12 @@ func NewDirectoryStore(errLog Logger) *DirectoryStore {
 	store := &DirectoryStore{}
 	store.Log = errLog
 	store.QueueName = QueueNameDefault
-	//store.queueFilename = QueueNameDefault + "." + FileExtQueue
-	//store.tmpQueueFilename = QueueNameDefault + "." + FileExtTmp
 
 	return store
 }
 
 func (s DirectoryStore) SetName(queueName string) {
 	s.QueueName = queueName
-	//s.queueFilename = queueName + "." + FileExtQueue
-	//s.tmpQueueFilename = queueName + "." + FileExtTmp
 }
 
 func (s DirectoryStore) queueExists() bool {
@@ -207,18 +197,31 @@ func (s DirectoryStore) RemoveHead() {
 	if !ok {
 		return
 	}
-	//s.createLogTail(size + 1) // 1 is "\n"
-	//s.swapTmp()
 	os.Remove(path.Join(s.QueueName, filename))
 }
 
-/* TODO: implement read all files and join strings.
 func (s DirectoryStore) ReadQueue() string {
-	text, err := ioutil.ReadFile(s.queueFilename)
+	files, err := ioutil.ReadDir(s.QueueName)
 	if err != nil {
-		s.Log.Error(err.Error())
 		panic(err)
 	}
-	return string(text)
+
+	dumpFile, err := os.OpenFile("dump."+s.QueueName+".txt", os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer dumpFile.Close()
+
+	os.Chdir(s.QueueName)
+	for i, f := range files {
+		msgFileBytes, err := ioutil.ReadFile(f.Name())
+		if err != nil {
+			panic(err)
+		}
+		dumpFile.Write(msgFileBytes)
+	}
+	os.Chdir("..")
+
+	// TODO: decide.
+	return ""
 }
-*/
