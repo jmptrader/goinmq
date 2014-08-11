@@ -1,11 +1,7 @@
 package goinmq
 
 import (
-	"bytes"
-	"encoding/gob"
-	"encoding/json"
 	"fmt"
-	"github.com/ugorji/go/codec"
 	"io/ioutil"
 	"os"
 	"path"
@@ -15,9 +11,10 @@ import (
 type DirectoryStore struct {
 	QueueName string
 	Log       Logger
+	Encoding  StoreEncoding
 }
 
-func NewDirectoryStore(errLog Logger) *DirectoryStore {
+func NewDirectoryStore(encoding StoreEncoding, errLog Logger) *DirectoryStore {
 	if errLog == nil {
 		errLog = ErrorLog{}
 	}
@@ -25,7 +22,7 @@ func NewDirectoryStore(errLog Logger) *DirectoryStore {
 	store := &DirectoryStore{}
 	store.Log = errLog
 	store.QueueName = QueueNameDefault
-
+	store.Encoding = encoding
 	if !store.queueExists() {
 		err := os.Mkdir(store.QueueName, 0600)
 		if err != nil {
@@ -97,47 +94,7 @@ func (s DirectoryStore) persist(msg *Message) {
 	}
 	defer file.Close()
 
-	//s.marshalGob(file, msg)
-	//s.marshalJson(file, msg)
-	s.marshalMsgpack(file, msg)
-}
-
-func (s DirectoryStore) marshalGob(file *os.File, message *Message) {
-	b := new(bytes.Buffer)
-	e := gob.NewEncoder(b)
-	err := e.Encode(message)
-	if err != nil {
-		panic(err)
-	}
-
-	if _, err := file.Write(b.Bytes()); err != nil {
-		panic(err)
-	}
-}
-
-func (s DirectoryStore) marshalJson(file *os.File, message *Message) {
-	js, err := json.Marshal(message)
-	if err != nil {
-		panic(err)
-	}
-
-	if _, err := file.Write(js); err != nil {
-		panic(err)
-	}
-}
-
-func (s DirectoryStore) marshalMsgpack(file *os.File, message *Message) {
-	var mh codec.MsgpackHandle
-	var b []byte
-	enc := codec.NewEncoderBytes(&b, &mh)
-	err := enc.Encode(message)
-	if err != nil {
-		panic(err)
-	}
-
-	if _, err := file.Write(b); err != nil {
-		panic(err)
-	}
+	s.Encoding.Marshal(file, msg)
 }
 
 func (s DirectoryStore) getLastFilename() (string, int) {
@@ -185,59 +142,9 @@ func (s DirectoryStore) getHead() (*Message, string, bool) {
 		return nil, "", false
 	}
 
-	//msg := s.unmarshalGob(files[0])
-	//msg := s.unmarshalJson(files[0])
-	msg := s.unmarshalMsgpack(files[0])
+	msg := s.Encoding.Unmarshal(files[0], s.QueueName)
 
 	return msg, files[0].Name(), true
-}
-
-func (s DirectoryStore) unmarshalGob(fileInfo os.FileInfo) *Message {
-	file, err := os.Open(path.Join(s.QueueName, fileInfo.Name()))
-	if err != nil {
-		return nil
-	}
-	defer file.Close()
-
-	msg := NewMessage()
-	d := gob.NewDecoder(file)
-	err = d.Decode(&msg)
-	if err != nil {
-		panic(err)
-	}
-
-	return msg
-}
-
-func (s DirectoryStore) unmarshalJson(fileInfo os.FileInfo) *Message {
-	msgBytes, err := ioutil.ReadFile(path.Join(s.QueueName, fileInfo.Name()))
-	if err != nil {
-		return nil
-	}
-
-	msg := NewMessage()
-	err = json.Unmarshal(msgBytes, &msg)
-	if err != nil {
-		panic(err)
-	}
-
-	return msg
-}
-
-func (s DirectoryStore) unmarshalMsgpack(fileInfo os.FileInfo) *Message {
-	msgBytes, err := ioutil.ReadFile(path.Join(s.QueueName, fileInfo.Name()))
-	if err != nil {
-		return nil
-	}
-	msg := NewMessage()
-	var mh codec.MsgpackHandle
-	dec := codec.NewDecoderBytes(msgBytes, &mh)
-	err = dec.Decode(&msg)
-	if err != nil {
-		panic(err)
-	}
-
-	return msg
 }
 
 func (s DirectoryStore) RemoveHead() {
