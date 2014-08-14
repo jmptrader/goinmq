@@ -13,6 +13,7 @@ const (
 	FileExtTmp   = "tmp"
 )
 
+// FileStore stores all messages in a single queue file.
 type FileStore struct {
 	QueueName        string
 	queueFilename    string
@@ -20,6 +21,7 @@ type FileStore struct {
 	Log              Logger
 }
 
+// NewFileStore returns a new FileStore.
 func NewFileStore(errLog Logger) *FileStore {
 	if errLog == nil {
 		errLog = ErrorLog{}
@@ -42,6 +44,7 @@ func NewFileStore(errLog Logger) *FileStore {
 	return store
 }
 
+// SetName sets the name of the queue file.
 func (s FileStore) SetName(queueName string) {
 	s.QueueName = queueName
 	s.queueFilename = queueName + "." + FileExtQueue
@@ -64,6 +67,7 @@ func (s FileStore) queueExists() bool {
 	return true
 }
 
+// Enqueue enqueues a message.
 func (s FileStore) Enqueue(newMsg *Message) {
 	s.persist(newMsg)
 }
@@ -82,6 +86,8 @@ func (s FileStore) persist(msg *Message) {
 	}
 }
 
+// Peek returns the first message in the queue, and whether there was one,
+// without removing it from the queue.
 func (s FileStore) Peek() (*Message, bool) {
 	msg, _, found := s.getHead()
 	return msg, found
@@ -107,14 +113,13 @@ func (s FileStore) getHead() (*Message, int64, bool) {
 	return msg, int64(len(msgData)), true
 }
 
+// RemoveHead removes the first message in the queue without returning it.
 func (s FileStore) RemoveHead() {
-
 	_, size, ok := s.getHead()
 	if !ok {
 		return
 	}
 	s.createLogTail(size + 1) // 1 is "\n"
-
 	s.swapTmp()
 }
 
@@ -172,6 +177,7 @@ func (s FileStore) swapTmp() {
 	}
 }
 
+// ReadQueue reads and returns the queue file.
 func (s FileStore) ReadQueue() string {
 	text, err := ioutil.ReadFile(s.queueFilename)
 	if err != nil {

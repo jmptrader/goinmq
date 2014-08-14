@@ -1,9 +1,13 @@
+// GoInMq is an in-process persistent message queue.
+
+// Store types and store formats are interchangeable.
 package goinmq
 
 import (
 	"time"
 )
 
+// Message is a queue message.
 type Message struct {
 	Id         string `json:"id"`
 	Priority   int    `json:"priority"`
@@ -12,11 +16,13 @@ type Message struct {
 	Message    string `json:"message"`
 }
 
+// Queue is the message queue.
 type Queue struct {
 	Log   Logger
 	store Storer
 }
 
+// Storer is implemented by all store types.
 type Storer interface {
 	SetName(string)
 	Peek() (*Message, bool)
@@ -24,6 +30,7 @@ type Storer interface {
 	Enqueue(*Message)
 }
 
+// Logger is implemented by all logging types.
 type Logger interface {
 	Trace(string)
 	Info(string)
@@ -38,10 +45,13 @@ func (ErrorLog) Info(string)    {}
 func (ErrorLog) Warning(string) {}
 func (ErrorLog) Error(string)   {}
 
+// ReadOp contains the channel into which to send the read message.
 type readOp struct {
 	resp chan *Message
 }
 
+// WriteOp contains the message to be enqueued
+// and the channel on which to send the ack response.
 type writeOp struct {
 	val  *Message
 	resp chan bool
@@ -56,6 +66,7 @@ var (
 	writes chan *writeOp
 )
 
+// NewQueue returns a new queue with specified name and store.
 func NewQueue(queueName string, store Storer, errLog Logger) *Queue {
 	if errLog == nil {
 		errLog = ErrorLog{}
@@ -75,6 +86,7 @@ func NewQueue(queueName string, store Storer, errLog Logger) *Queue {
 	return q
 }
 
+// NewMessage returns a new Message.
 func NewMessage() *Message {
 	return &Message{}
 }
@@ -100,6 +112,7 @@ func (q Queue) startFsGate(reads chan *readOp, writes chan *writeOp) {
 	}()
 }
 
+// GetSendChannel returns the channel for enqueuing.
 func (q Queue) GetSendChannel() chan *Message {
 	q.Log.Trace("GetSendQueue()")
 
@@ -119,6 +132,7 @@ func (q Queue) GetSendChannel() chan *Message {
 	return sendChan
 }
 
+// GetReceiveChannel returns the channel for dequeuing.
 func (q Queue) GetReceiveChannel() chan *Message {
 	q.Log.Trace("GetReceiveQueue()")
 

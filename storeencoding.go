@@ -10,15 +10,22 @@ import (
 	"path"
 )
 
+// StoreEncoding interface is implemented by all StoreEncoding types.
 type StoreEncoding interface {
 	Marshal(file *os.File, message *Message)
 	Unmarshal(fileInfo os.FileInfo, queueName string) *Message
 }
 
+// GobEncoding, implements StoreEncoding interface, stores DirectoryStore messages in Gob format.
 type GobEncoding struct{}
+
+// JsonEncoding, implements StoreEncoding interface, stores DirectoryStore messages in Json format.
 type JsonEncoding struct{}
+
+// MsgpackEncoding, implements StoreEncoding interface, stores DirectoryStore messages in Mshpack format.
 type MsgpackEncoding struct{}
 
+// Marshal writes the specified message to the specified file, Gob encoded.
 func (e GobEncoding) Marshal(file *os.File, message *Message) {
 	b := new(bytes.Buffer)
 	g := gob.NewEncoder(b)
@@ -31,6 +38,7 @@ func (e GobEncoding) Marshal(file *os.File, message *Message) {
 	}
 }
 
+// Marshal writes the specified message to the specified file, Json encoded.
 func (e JsonEncoding) Marshal(file *os.File, message *Message) {
 	js, err := json.Marshal(message)
 	if err != nil {
@@ -41,6 +49,7 @@ func (e JsonEncoding) Marshal(file *os.File, message *Message) {
 	}
 }
 
+// Marshal writes the specified message to the specified file, Msgpack encoded.
 func (e MsgpackEncoding) Marshal(file *os.File, message *Message) {
 	var mh codec.MsgpackHandle
 	var b []byte
@@ -54,6 +63,7 @@ func (e MsgpackEncoding) Marshal(file *os.File, message *Message) {
 	}
 }
 
+// Unmarshal reads the specified Gob encoded file and returns a message.
 func (e GobEncoding) Unmarshal(fileInfo os.FileInfo, queueName string) *Message {
 	file, err := os.Open(path.Join(queueName, fileInfo.Name()))
 	if err != nil {
@@ -69,6 +79,7 @@ func (e GobEncoding) Unmarshal(fileInfo os.FileInfo, queueName string) *Message 
 	return msg
 }
 
+// Unmarshal reads the specified Json encoded file and returns a message.
 func (e JsonEncoding) Unmarshal(fileInfo os.FileInfo, queueName string) *Message {
 	msgBytes, err := ioutil.ReadFile(path.Join(queueName, fileInfo.Name()))
 	if err != nil {
@@ -82,6 +93,7 @@ func (e JsonEncoding) Unmarshal(fileInfo os.FileInfo, queueName string) *Message
 	return msg
 }
 
+// Unmarshal reads the specified Msgpack encoded file and returns a message.
 func (e MsgpackEncoding) Unmarshal(fileInfo os.FileInfo, queueName string) *Message {
 	msgBytes, err := ioutil.ReadFile(path.Join(queueName, fileInfo.Name()))
 	if err != nil {

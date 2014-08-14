@@ -8,12 +8,17 @@ import (
 	"strconv"
 )
 
+// DirectoryStore stores each message as a file in the queue directory.
+//
+// Messages can be stored in a specified encoding
+// such as Json, Gob, Msgpack, and so on.
 type DirectoryStore struct {
 	QueueName string
 	Log       Logger
 	Encoding  StoreEncoding
 }
 
+// NewDirectoryStore returns a new DirectoryStore with the specified encoding.
 func NewDirectoryStore(encoding StoreEncoding, errLog Logger) *DirectoryStore {
 	if errLog == nil {
 		errLog = ErrorLog{}
@@ -34,6 +39,7 @@ func NewDirectoryStore(encoding StoreEncoding, errLog Logger) *DirectoryStore {
 	return store
 }
 
+// SetName sets the name of the queue directory.
 func (s DirectoryStore) SetName(queueName string) {
 	s.QueueName = queueName
 }
@@ -63,6 +69,7 @@ func (s DirectoryStore) isQueueEmpty() bool {
 	}
 }
 
+// Enqueue enqueues a message.
 func (s DirectoryStore) Enqueue(newMsg *Message) {
 	s.persist(newMsg)
 }
@@ -127,6 +134,8 @@ func (s DirectoryStore) reindexFiles() {
 	os.Chdir("..")
 }
 
+// Peek returns the first message in the queue, and whether there was one,
+// without removing it from the queue.
 func (s DirectoryStore) Peek() (*Message, bool) {
 	msg, _, found := s.getHead()
 	return msg, found
@@ -147,6 +156,7 @@ func (s DirectoryStore) getHead() (*Message, string, bool) {
 	return msg, files[0].Name(), true
 }
 
+// RemoveHead removes the first message in the queue without returning it.
 func (s DirectoryStore) RemoveHead() {
 	_, filename, ok := s.getHead()
 	if !ok {
@@ -155,6 +165,8 @@ func (s DirectoryStore) RemoveHead() {
 	os.Remove(path.Join(s.QueueName, filename))
 }
 
+// ReadQueue reads all message files in the queue directory and
+// concatenates them all into a single file.
 func (s DirectoryStore) ReadQueue() string {
 	files, err := ioutil.ReadDir(s.QueueName)
 	if err != nil {
