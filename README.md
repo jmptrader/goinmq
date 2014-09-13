@@ -1,13 +1,18 @@
-GoInMQ
-======
+# GoInMQ
 
 An in-process persistent message queue package for Golang.
 
+![Progress](http://progressed.io/bar/80?title=ok)
 
-Example usage:
+---
+#### Status: Good, not optimised.
+---
+
+## Usage
 ```
 func main() {
-	q := goinmq.NewQueue("", errLog) // Empty queue name defaults, nil logger if no logging desired.
+	// Empty queue name defaults, nil logger if no logging desired.
+	q := goinmq.NewQueue("", errLog)
 	recvChan := q.GetReceiveChannel()
 	sendChan := q.GetSendChannel()
 	go recvMessages(recvChan)
@@ -37,3 +42,19 @@ func sendMessages(sendChan chan *goinmq.Message) {
 	}
 }
 ```
+
+## Checklist
+
+ - [X] One file per message.
+ - [X] One file for all messages.
+ - [X] Json.
+ - [X] Msgpack.
+ - [X] Gob.
+ - [X] Provide examples.
+ - [ ] Write API documentation.
+ - [ ] Write tests.
+
+## License
+BSD 3-Clause: [LICENSE.txt](LICENSE.txt)
+
+[<img alt="LICENSE" src="http://img.shields.io/pypi/l/Django.svg?style=flat-square"/>](LICENSE.txt)
