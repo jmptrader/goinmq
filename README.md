@@ -5,7 +5,7 @@ An in-process persistent message queue package for Golang.
 ![Progress](http://progressed.io/bar/80?title=ok)
 
 ---
-#### Status: Good, not optimised.
+#### Status: OK, not optimised.
 ---
 
 ## Usage
